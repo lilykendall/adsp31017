@@ -13,17 +13,20 @@ ccsa_data = pd.read_csv('CCSA.csv')
 # axes must be correctly labeled, and the tick marks must be appropriately formatted to receive full
 # credit.
 
-# first, create a new dataset with the month and average CCSA value for that month
+# first, create a new dataset with the month and average CCSA value for that month and year
+ccsa_data['Week'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.isocalendar().week
+ccsa_data['Year'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.year
 ccsa_data['Month'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.month
-ccsa_monthly_avg = ccsa_data.groupby('Month')['CCSA'].mean().reset_index()
+ccsa_data['Week_of_Month'] = ((ccsa_data['Week'] - 1) % 5) + 1
 
+ccsa_monthly_avg = ccsa_data.groupby(['Year', 'Month'])['CCSA'].mean().reset_index()
+ccsa_monthly_avg['Time'] = pd.to_datetime(ccsa_monthly_avg[['Year', 'Month']].assign(DAY=1))
 # plot the monthly averages
 plt.figure(figsize=(10, 6))
-plt.plot(ccsa_monthly_avg['Month'], ccsa_monthly_avg['CCSA'], marker='o')
+plt.plot(ccsa_monthly_avg['Time'], ccsa_monthly_avg['CCSA'], marker='o')
 plt.title('Monthly Average CCSA Values')
-plt.xlabel('Month')
+plt.xlabel('Time (Months)')
 plt.ylabel('Average CCSA')
-plt.xticks(range(1, 13))
 plt.grid()
 plt.show()
 
@@ -32,12 +35,6 @@ plt.show()
 # pairwise Pearson correlation between the counts of the rth and sth weeks of each month, where r
 # and s run from 1 to 5 inclusively. Use all available non-missing counts for each pair to calculate the
 # correlations. Present the correlations in a 5 × 5 matrix with proper row and column labels.
-
-# first, create a new dataset with the week of the month
-ccsa_data['Week'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.isocalendar().week
-ccsa_data['Year'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.year
-ccsa_data['Month'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.month
-ccsa_data['Week_of_Month'] = ((ccsa_data['Week'] - 1) % 5) + 1
 
 # pivot the data to have weeks as columns
 ccsa_pivot = ccsa_data.pivot_table(index=['Year', 'Month'], columns='Week_of_Month', values='CCSA')
@@ -353,8 +350,8 @@ fp = sum(1 for p, a in zip(predictions, actual) if p == 1 and a == 0)
 fn = sum(1 for p, a in zip(predictions, actual) if p == 0 and a == 1)
 
 confusion_matrix = pd.DataFrame(
-    [[tp, fp],
-     [fn, tn]],
+    [[tp, fn],
+     [fp, tn]],
     index=['Actual Arrest', 'Actual No Arrest'],
     columns=['Predicted Arrest', 'Predicted No Arrest']
 )
