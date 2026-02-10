@@ -17,7 +17,7 @@ ccsa_data = pd.read_csv('CCSA.csv')
 ccsa_data['Week'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.isocalendar().week
 ccsa_data['Year'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.year
 ccsa_data['Month'] = pd.to_datetime(ccsa_data['observation_date'], format='%Y-%m-%d').dt.month
-ccsa_data['Week_of_Month'] = ((ccsa_data['Week'] - 1) % 5) + 1
+ccsa_data['Week_of_Month'] = ccsa_data['Week_of_Month'] = ((ccsa_data['observation_date'].dt.day - 1) // 7) + 1
 
 ccsa_monthly_avg = ccsa_data.groupby(['Year', 'Month'])['CCSA'].mean().reset_index()
 ccsa_monthly_avg['Time'] = pd.to_datetime(ccsa_monthly_avg[['Year', 'Month']].assign(DAY=1))
@@ -113,11 +113,12 @@ print(pca_5.explained_variance_ratio_)
 print("Explained variance ratios for months without fifth week:")
 print(pca_4.explained_variance_ratio_)
 
-# based on the elbow plots, I would choose the number of weeks in each group (4 and 5) as the number of principal components# because that is the last number of components fit, the pca is already trained with that number
-pca_5.n_components = 2
+# based on the elbow plots, I would choose one principle component because it explains almost all of the variance
+# (~ 99%)
+pca_5.n_components = 1
 pca_5.fit(train_w_fifth)
 
-pca_4.n_components = 2
+pca_4.n_components = 1
 pca_4.fit(train_wo_fifth)
 
 # d) Apply the principal components to the Testing partition. Of course, apply the principal
@@ -137,8 +138,8 @@ test_w_fifth_pca = pca_5.transform(test_w_fifth)
 test_wo_fifth_pca = pca_4.transform(test_wo_fifth)
 
 # concatenate the principal components’ values in the Testing partition by year and month
-test_w_fifth_pca_df = pd.DataFrame(test_w_fifth_pca, index=test_w_fifth.index, columns=[f'PC1', 'PC2'])
-test_wo_fifth_pca_df = pd.DataFrame(test_wo_fifth_pca, index=test_wo_fifth.index, columns=[f'PC1', 'PC2'])
+test_w_fifth_pca_df = pd.DataFrame(test_w_fifth_pca, index=test_w_fifth.index, columns=[f'PC1'])
+test_wo_fifth_pca_df = pd.DataFrame(test_wo_fifth_pca, index=test_wo_fifth.index, columns=[f'PC1'])
 test_pca_concat = pd.concat([test_w_fifth_pca_df, test_wo_fifth_pca_df]).sort_index()
 
 # print the variances of the principal components applied to the Testing partition
@@ -154,20 +155,23 @@ from mlxtend.preprocessing import TransactionEncoder
 from collections import defaultdict
 import pandas as pd
 
+# For illustrative purposes, we use only observations where the retail theft occurred in 2025 (i.e., Year is 2025) 
+# and at the following locations: DEPARTMENT STORE, SMALL RETAIL STORE, GROCERY FOOD STORE, DRUG STORE, CONVENIENCE STORE, GAS STATION, TAVERN/LIQUOR STORE, COMMERCIAL / BUSINESS OFFICE, RESTAURANT, APPLIANCE STORE, WAREHOUSE, and TAVERN / LIQUOR STORE. 
+# This selection yielded 13,282 observations for analysis, with an overall arrest rate of approximately 30.65%. 
+# We extracted the month and hour of the incident from the Date field. Because the Chicago Police patrol unit operates in three shifts, 
+# called Police Watch, we will map each hour to a Police Watch as follows. Police Watch is ‘First’ if the hour is 5 to 11, 
+# ‘First -> Second’ if the hour is 12, ‘Second’ if the hour is 13 to 19, ‘Second -> Third’ if the hour is 20, ‘Third’ if the hour is 21 to 23 and 0 to 3,
+# and ‘Third -> First’ if the hour is 4
+
 # load in the data
 retail_data = pd.read_csv('Retail_Theft_20260109 (1).csv')
 
 # Create the dataset as described in the assignment
-# I used chatGPT to generate this code using the following prompt:
-# can you write code to make a dataset following this description and only keeping useful features: For illustrative purposes, we use only observations where the retail theft occurred in 2025 (i.e., Year is 2025) and at the following locations: DEPARTMENT STORE, SMALL RETAIL STORE, GROCERY FOOD STORE, DRUG STORE, CONVENIENCE STORE, GAS STATION, TAVERN/LIQUOR STORE, COMMERCIAL / BUSINESS OFFICE, RESTAURANT, APPLIANCE STORE, WAREHOUSE, and TAVERN / LIQUOR STORE. This selection yielded 13,282 observations for analysis, with an overall arrest rate of approximately 30.65%. We extracted the month and hour of the incident from the Date field. Because the Chicago Police patrol unit operates in three shifts, called Police Watch, we will map each hour to a Police Watch as follows. Police Watch is ‘First’ if the hour is 5 to 11, ‘First -> Second’ if the hour is 12, ‘Second’ if the hour is 13 to 19, ‘Second -> Third’ if the hour is 20, ‘Third’ if the hour is 21 to 23 and 0 to 3, and ‘Third -> First’ if the hour is 4
 
 # Ensure Date is datetime
 retail_data['Date'] = pd.to_datetime(retail_data['Date'])
 
-# Retail theft filter
 df_rt = retail_data[
-    (retail_data['Primary Type'] == 'THEFT') &
-    (retail_data['Description'].str.contains('RETAIL', case=False, na=False)) &
     (retail_data['Year'] == 2025)
 ].copy()
 
@@ -212,20 +216,13 @@ def police_watch(hour):
 
 df_rt['Police Watch'] = df_rt['Hour'].apply(police_watch)
 
-df_final = df_rt[[
-    'Arrest',
-    'Domestic',
-    'Location Description',
-    'Month',
-    'Police Watch',
-    'District',
-    'Beat'
-]].copy()
-
+df_final = df_rt[['Arrest', 'Location Description', 'Month', 'Police Watch', 'Beat']].copy()
 df_final = df_final.dropna()
 
 df_train = df_final[df_final['Beat'].isin([111, 112, 113])].copy()
 df_test = df_final[df_final['Beat'] == 1834].copy()
+df_train = df_train.drop(columns = ['Beat'])
+df_test = df_test.drop(columns = ['Arrest', 'Beat'])
 
 # a) (10 points) Discover association rules with a minimum Support of five incidents and a minimum Lift
 # of one. We only want association rules whose Consequents contain a particular 1-item set. That 1-
@@ -253,28 +250,25 @@ rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.0)
 rules_arrest_true = rules[rules['consequents'].apply(lambda x: 'Arrest=True' in x)]
 rules_arrest_false = rules[rules['consequents'].apply(lambda x: 'Arrest=False' in x)]
 
-# this function was created by copilot based on the prompt: can you write a function to remove redundant rules from a dataframe of association rules where each rule has antecedents and consequents as sets
-def remove_redundant_rules(rules):
-    # sort rules by length of antecedents and consequents
-    rules = rules.copy()
-    rules['rule_length'] = rules['antecedents'].apply(lambda x: len(x)) + rules['consequents'].apply(lambda x: len(x))
-    rules = rules.sort_values(by='rule_length')
-
-    non_redundant_rules = []
-    for i, rule in rules.iterrows():
-        is_redundant = False
-        for j in non_redundant_rules:
-            if j['antecedents'].issubset(rule['antecedents']) and j['consequents'].issubset(rule['consequents']):
-                is_redundant = True
-                break
-        if not is_redundant:
-            non_redundant_rules.append(rule)
-    
-    return pd.DataFrame(non_redundant_rules).drop(columns=['rule_length'])
+# Simplify rules by removing redundant rules with lower confidence
+# Class code
+def simplify_rule (rule_df):
+    rule_sorted = rule_df.sort_values(by = 'confidence', ascending = False)
+    all_index = rule_sorted.index
+    n_rule = rule_sorted.shape[0]
+    index_to_drop = []
+    for i in range(n_rule):
+        s1 = rule_sorted.iloc[i]['antecedents']
+        for j in range(i+1,n_rule):
+            s2 = rule_sorted.iloc[j]['antecedents']
+            if (s1.issuperset(s2)):
+                index_to_drop.append(all_index[j])
+    simplified_rule_df = rule_sorted.drop(index_to_drop)
+    return simplified_rule_df
 
 # remove redundant rules
-rules_arrest_true_nr = remove_redundant_rules(rules_arrest_true)
-rules_arrest_false_nr = remove_redundant_rules(rules_arrest_false)
+rules_arrest_true_nr = simplify_rule(rules_arrest_true)
+rules_arrest_false_nr = simplify_rule(rules_arrest_false)
 
 # find number of non-redundant rules
 print(f"Number of non-redundant rules with Arrest=True in the consequent: {len(rules_arrest_true_nr)}")
@@ -287,16 +281,16 @@ print(f"Number of non-redundant rules with Arrest=False in the consequent: {len(
 
 plt.figure(figsize=(10, 6))
 scatter_true = plt.scatter(
-    rules_arrest_true_nr['support'],
     rules_arrest_true_nr['confidence'],
+    rules_arrest_true_nr['support'],
     c=rules_arrest_true_nr['lift'],
     cmap='viridis',
     marker='$\u2713$',
     label='Arrest=True'
 )
 scatter_false = plt.scatter(
-    rules_arrest_false_nr['support'],
     rules_arrest_false_nr['confidence'],
+    rules_arrest_false_nr['support'],
     c=rules_arrest_false_nr['lift'],
     cmap='viridis',
     marker='x',
@@ -304,67 +298,74 @@ scatter_false = plt.scatter(
 )
 plt.colorbar(scatter_true, label='Lift Value')
 plt.title('Support vs Confidence of Association Rules')
-plt.xlabel('Support')
-plt.ylabel('Confidence')
+plt.ylabel('Support')
+plt.xlabel('Confidence')
 plt.legend()
 plt.grid()
 plt.show()
 
 
-# c) (10 points) Apply the association rules to the testing partition and produce the Confusion Matrix.
-# What is the accuracy? Also, what percentage of observations do the association rules fail to deliver
+# c)(10 points) Apply the association rules to the testing partition and produce the Confusion Matrix. 
+# What is the accuracy? Also, what percentage of observations do the association rules fail to deliver 
 # any definitive predictions for?
 
-# apply to testing partition
-test_transactions = df_test.apply(
-    lambda row: [f"{col}={row[col]}" for col in df_test.columns],
+# Prepare Test Transactions WITHOUT the Arrest feature
+# drop Arrest from the features so the rules predict it
+test_features = df_test.drop(columns=['Arrest'])
+test_transactions = test_features.apply(
+    lambda row: [f"{col}={row[col]}" for col in test_features.columns],
     axis=1
 ).tolist()
 
 predictions = []
+actual_labels = df_test['Arrest'].astype(int).tolist()
 
+# Combine all non-redundant rules for prediction
 all_rules = pd.concat([rules_arrest_true_nr, rules_arrest_false_nr])
 
+# Prediction
 for transaction in test_transactions:
     matched_rules = []
-
+    
+    # Check if rule antecedents are a subset of the transaction features
     for _, rule in all_rules.iterrows():
         if rule['antecedents'].issubset(set(transaction)):
             matched_rules.append(rule)
 
     if matched_rules:
+        # Resolve multiple matches by choosing the rule with the highest confidence
         best_rule = max(matched_rules, key=lambda x: x['confidence'])
         if 'Arrest=True' in best_rule['consequents']:
             predictions.append(1)
         else:
             predictions.append(0)
     else:
+        # Track cases where no rules apply
         predictions.append(None)
 
-actual = df_test['Arrest'].astype(int).tolist()
+# Filter for valid predictions to build the matrix
+valid_results = [(p, a) for p, a in zip(predictions, actual_labels) if p is not None]
+y_pred, y_true = zip(*valid_results) if valid_results else ([], [])
 
-# create confusion matrix
-tp = sum(1 for p, a in zip(predictions, actual) if p == 1 and a == 1)
-tn = sum(1 for p, a in zip(predictions, actual) if p == 0 and a == 0)
-fp = sum(1 for p, a in zip(predictions, actual) if p == 1 and a == 0)
-fn = sum(1 for p, a in zip(predictions, actual) if p == 0 and a == 1)
+# Generate the Confusion Matrix
+from sklearn.metrics import confusion_matrix as sk_cm
 
-confusion_matrix = pd.DataFrame(
-    [[tp, fn],
-     [fp, tn]],
-    index=['Actual Arrest', 'Actual No Arrest'],
+cm_array = sk_cm(y_true, y_pred, labels=[1, 0])
+cm_df = pd.DataFrame(
+    cm_array, 
+    index=['Actual Arrest', 'Actual No Arrest'], 
     columns=['Predicted Arrest', 'Predicted No Arrest']
 )
-print(confusion_matrix)
 
-# calculate accuracy and no prediction rate
-valid = [(p, a) for p, a in zip(predictions, actual) if p is not None]
+print("Corrected Confusion Matrix:")
+print(cm_df)
 
-accuracy = sum(1 for p, a in valid if p == a) / len(valid)
-print("Accuracy:", accuracy)
-
+# Calculate Metrics
+accuracy = sum(1 for p, a in valid_results if p == a) / len(valid_results) if valid_results else 0
 no_prediction_rate = predictions.count(None) / len(predictions)
-print("No prediction rate:", no_prediction_rate)
+
+print(f"\nAccuracy (excluding 'None'): {accuracy:.2%}")
+print(f"No Prediction Rate: {no_prediction_rate:.2%}")
 
 
 # d) (10 points) Based on the test partition results, what are the top three most invoked rules for
@@ -415,6 +416,15 @@ print(top3_arrest[cols_to_show])
 
 print("Top 3 Arrest=False Rules")
 print(top3_no_arrest[cols_to_show])
+
 # e) (10 points) Suppose Susan owns a SMALL RETAIL STORE in downtown Chicago, and she will hire a
 # private security guard to protect her store from retail theft. Based on your rules, when should Susan
 # request the security guard be on duty, particularly when the police are less available?
+
+susan_specific_rules = rules_arrest_false_nr[
+    rules_arrest_false_nr['antecedents'].apply(lambda x: 'Location Description=SMALL RETAIL STORE' in x)
+].copy()
+susan_specific_rules = susan_specific_rules.sort_values(by='confidence', ascending=False)
+
+print("Rules for SMALL RETAIL STORE leading to No Arrest:")
+print(susan_specific_rules[['antecedents', 'consequents', 'confidence', 'lift']])
