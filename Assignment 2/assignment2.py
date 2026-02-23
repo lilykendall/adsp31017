@@ -29,24 +29,24 @@ reference_date = datetime.strptime('2024-12-31', "%Y-%m-%d")
 n_days = pandas.Series((t_date - reference_date) / numpy.timedelta64(1, 'D'), name = 'Recency')
 
 # Create the training data
-train_data = df[['Customer_ID', 'Transaction_Date', 'Transaction_Amount']].join(n_days)
+train_data = df[['Customer_ID', 'Number_Items', 'Transaction_Date', 'Transaction_Amount']].join(n_days)
 train_data.head()
 
 # Define the aggregation procedure outside of the groupby operation
 aggregations = {
 'Recency':'max',
-'Customer_ID': 'count',
+'Number_Items': 'median',
 'Transaction_Amount': 'sum'
 }
 
-column_map = {'Recency': 'Recency', 'Customer_ID': 'Frequency', 'Transaction_Amount': 'Monetary'}
+column_map = {'Recency': 'Recency', 'Number_Items': 'Frequency', 'Transaction_Amount': 'Monetary'}
 customer_data = train_data.groupby('Customer_ID').agg(aggregations).rename(columns =
 column_map)
 rfm_names = customer_data.columns
 
 # Determine the quintiles
 quintile = customer_data[rfm_names].describe(percentiles=[0.2, 0.4, 0.6, 0.8])
-quintile
+print(quintile)
 
 # (b) (10 points) Generate a separate vertical bar chart for each Recency, Frequency, and Monetary
 # group. Display the three bar charts in the same chart frame.
@@ -408,7 +408,7 @@ show_cluster_metric(metric_df)
 # the rows and the RFM variables on the columns. The cell contents are row percentages (i.e., the
 # percentages within a row should sum to 100%).
 
-best_k = 3 
+best_k = 4 
 aseed = 710136264 + (31 * (best_k - 2)) # Aligning seed with trial logic
 
 best_perplexity = 50
