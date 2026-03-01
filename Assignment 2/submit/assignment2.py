@@ -40,8 +40,7 @@ aggregations = {
 }
 
 column_map = {'Recency': 'Recency', 'Number_Items': 'Frequency', 'Transaction_Amount': 'Monetary'}
-customer_data = train_data.groupby('Customer_ID').agg(aggregations).rename(columns =
-column_map)
+customer_data = train_data.groupby('Customer_ID').agg(aggregations).rename(columns = column_map)
 rfm_names = customer_data.columns
 
 # Determine the quintiles
